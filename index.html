@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Multi DB Config with AWS MFA</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #f9f9f9;
+      padding: 30px;
+      max-width: 900px;
+      margin: auto;
+    }
+    h2 {
+      color: #2c3e50;
+    }
+    label {
+      display: block;
+      margin-top: 10px;
+      font-weight: bold;
+    }
+    input, select {
+      width: 100%;
+      padding: 8px;
+      margin-top: 4px;
+      border: 1px solid #ccc;
+      border-radius: 5px;
+      font-size: 14px;
+    }
+    .connection-block {
+      border: 2px solid #ccc;
+      padding: 15px;
+      margin-bottom: 20px;
+      border-radius: 5px;
+      background: #fff;
+      position: relative;
+    }
+    button {
+      margin-top: 20px;
+      padding: 10px 20px;
+      background: #3498db;
+      color: white;
+      border: none;
+      border-radius: 5px;
+      font-size: 16px;
+      cursor: pointer;
+    }
+    .remove-btn {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      background: #e74c3c;
+      font-size: 12px;
+      padding: 5px 10px;
+    }
+    #aws-section {
+      display: none;
+      margin-top: 20px;
+      border: 2px dashed #ccc;
+      padding: 15px;
+      border-radius: 5px;
+      background: #eef;
+    }
+  </style>
+</head>
+<body>
+
+<h2>Multi DB Config Generator</h2>
+
+<label>Select Setup Method:</label>
+<select id="method" onchange="toggleMethod()">
+  <option value="manual">Manual DB Entry</option>
+  <option value="aws">AWS Auto-Fetch (MFA)</option>
+</select>
+
+<form id="multiForm" onsubmit="handleSubmit(event)">
+  <div id="statusMessage" style="margin-top: 15px; font-weight: bold;"></div>
+
+  <div id="manual-section">
+    <div id="connections-container"></div>
+    <button type="button" onclick="addConnection()">➕ Add DB Connection</button>
+  </div>
+
+  <div id="aws-section">
+    <label>AWS Profile</label>
+    <input type="text" name="aws_profile" placeholder="default or myprofile" required>
+
+    <label>AWS Region</label>
+    <input type="text" name="aws_region" placeholder="e.g., us-east-1" required>
+
+    <label>MFA ARN</label>
+    <input type="text" name="aws_mfa_arn" placeholder="arn:aws:iam::123456789012:mfa/your.user" required>
+
+    <label>MFA Code</label>
+    <input type="text" name="aws_mfa_token" placeholder="6-digit code" required>
+
+    <p style="font-size: 13px; color: #555;">
+      🔒 Works with Google Authenticator, Microsoft Authenticator, Okta, etc.
+    </p>
+  </div>
+
+  <button type="submit">✅ Generate Config</button>
+</form>
+
+<script>
+  let count = 0;
+
+  function addConnection(data = {}) {
+    const index = count;
+    const container = document.createElement('div');
+    container.className = 'connection-block';
+    container.setAttribute('data-index', index);
+
+    container.innerHTML = `
+      <button type="button" class="remove-btn" onclick="removeConnection(this)" style="display:none;">❌ Remove</button>
+      <h3>Connection ${index + 1}</h3>
+
+      <label>Software</label>
+      <select name="connections[${index}][softwareTool]" required>
+        <option value="DBeaver">DBeaver</option>
+        <option value="DataGrip">DataGrip</option>
+        <option value="pgAdmin">pgAdmin</option>
+        <option value="HeidiSQL">HeidiSQL</option>
+        <option value="TablePlus">TablePlus</option>
+        <option value="Other">Other</option>
+      </select>
+
+      <label>Project Name</label>
+      <input name="connections[${index}][softwareName]" value="${data.softwareName || ''}" required>
+
+      <label>Connection Name</label>
+      <input name="connections[${index}][connName]" value="${data.connName || ''}" required>
+
+      <label>Database Type</label>
+      <select name="connections[${index}][dbType]" required>
+        <option value="postgresql">PostgreSQL</option>
+        <option value="mysql">MySQL</option>
+        <option value="oracle">Oracle</option>
+        <option value="mssql">SQL Server</option>
+        <option value="sqlite">SQLite</option>
+      </select>
+
+      <label>Host</label>
+      <input name="connections[${index}][host]" value="${data.host || ''}" required>
+
+      <label>Port</label>
+      <input name="connections[${index}][port]" type="number" value="${data.port || ''}" required>
+
+      <label>Database Name</label>
+      <input name="connections[${index}][dbName]" value="${data.dbName || ''}" required>
+
+      <label>Username</label>
+      <input name="connections[${index}][username]" value="${data.username || ''}" required>
+
+      <label>Password</label>
+      <input name="connections[${index}][password]" type="password" value="${data.password || ''}" required>
+    `;
+
+    document.getElementById('connections-container').appendChild(container);
+    count++;
+    toggleRemoveButtons();
+  }
+
+  function removeConnection(button) {
+    const block = button.parentElement;
+    block.remove();
+    reindexConnections();
+    toggleRemoveButtons();
+  }
+
+  function reindexConnections() {
+    const blocks = document.querySelectorAll('.connection-block');
+    count = 0;
+    blocks.forEach(block => {
+      block.setAttribute('data-index', count);
+      block.querySelector('h3').textContent = `Connection ${count + 1}`;
+      const inputs = block.querySelectorAll('input, select');
+      inputs.forEach(input => {
+        const key = input.name.substring(input.name.indexOf('][') + 2, input.name.length - 1);
+        input.name = `connections[${count}][${key}]`;
+      });
+      count++;
+    });
+  }
+
+  function toggleRemoveButtons() {
+    const blocks = document.querySelectorAll('.connection-block');
+    blocks.forEach((block, i) => {
+      const btn = block.querySelector('.remove-btn');
+      btn.style.display = (blocks.length > 1) ? 'inline-block' : 'none';
+    });
+  }
+
+  function toggleMethod() {
+    const method = document.getElementById('method').value;
+    const manual = document.getElementById('manual-section');
+    const aws = document.getElementById('aws-section');
+    if (method === 'manual') {
+      manual.style.display = 'block';
+      aws.style.display = 'none';
+    } else {
+      manual.style.display = 'none';
+      aws.style.display = 'block';
+    }
+  }
+
+  function handleSubmit(event) {
+    event.preventDefault();
+
+    const method = document.getElementById("method").value;
+    const statusDiv = document.getElementById("statusMessage");
+
+    if (method === "aws") {
+      statusDiv.style.color = "orange";
+      statusDiv.textContent = "⚠ AWS MFA is not supported in offline HTML. Use the full app instead.";
+      return;
+    }
+
+    const blocks = document.querySelectorAll(".connection-block");
+    const connections = [];
+
+    blocks.forEach((block, index) => {
+      const conn = {};
+      conn.softwareTool = block.querySelector(`[name^="connections[${index}][softwareTool]"]`).value;
+      conn.softwareName = block.querySelector(`[name^="connections[${index}][softwareName]"]`).value;
+      conn.connName = block.querySelector(`[name^="connections[${index}][connName]"]`).value;
+      conn.dbType = block.querySelector(`[name^="connections[${index}][dbType]"]`).value;
+      conn.host = block.querySelector(`[name^="connections[${index}][host]"]`).value;
+      conn.port = block.querySelector(`[name^="connections[${index}][port]"]`).value;
+      conn.dbName = block.querySelector(`[name^="connections[${index}][dbName]"]`).value;
+      conn.username = block.querySelector(`[name^="connections[${index}][username]"]`).value;
+      conn.password = block.querySelector(`[name^="connections[${index}][password]"]`).value;
+      connections.push(conn);
+    });
+
+    if (connections.length === 0) {
+      statusDiv.style.color = "red";
+      statusDiv.textContent = "❌ Please add at least one DB connection.";
+      return;
+    }
+
+    const payload = JSON.stringify(connections, null, 2);
+    const blob = new Blob([payload], { type: "application/json" });
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = "db_config.json";
+    link.click();
+
+    statusDiv.style.color = "green";
+    statusDiv.textContent = "✅ Configuration JSON downloaded!";
+  }
+
+  // Initial load
+  window.onload = () => {
+    addConnection();
+    toggleMethod();
+  };
+</script>
+
+</body>
+</html>

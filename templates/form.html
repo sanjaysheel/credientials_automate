@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>DB Config Generator</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #f9f9f9;
+      padding: 30px;
+      max-width: 800px;
+      margin: auto;
+    }
+    h2 {
+      color: #2c3e50;
+    }
+    label {
+      font-weight: bold;
+      display: block;
+      margin-top: 10px;
+    }
+    input, select {
+      width: 100%;
+      padding: 8px;
+      margin-top: 4px;
+      font-size: 14px;
+    }
+    button {
+      margin-top: 20px;
+      padding: 10px 20px;
+      background: #3498db;
+      color: white;
+      font-size: 16px;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+    }
+    #aws-section {
+      display: none;
+      margin-top: 20px;
+      border: 2px dashed #ccc;
+      padding: 15px;
+      border-radius: 5px;
+      background: #eef;
+    }
+    #message {
+      font-weight: bold;
+      margin-top: 15px;
+    }
+  </style>
+</head>
+<body>
+
+<h2>DB Config Generator</h2>
+
+<label>Choose Method:</label>
+<select id="method" onchange="toggleMethod()">
+  <option value="manual">Manual Input</option>
+  <option value="aws">AWS Auto-Fetch (MFA)</option>
+</select>
+
+<!-- Manual Section -->
+<div id="manual-section">
+  <label>Connection ID</label>
+  <input id="id" placeholder="auto-generated if left blank" value="">
+
+  <label>Software Tool</label>
+  <select id="softwareTool">
+    <option value="DBeaver">DBeaver</option>
+    <option value="DataGrip">DataGrip</option>
+    <option value="pgAdmin">pgAdmin</option>
+    <option value="HeidiSQL">HeidiSQL</option>
+    <option value="TablePlus">TablePlus</option>
+    <option value="Other">Other</option>
+  </select>
+
+  <label>Connection Name</label>
+  <input id="connName" placeholder="e.g., Inventory DB" value="">
+
+  <label>Database Driver</label>
+  <select id="dbType">
+    <option value="postgresql">PostgreSQL</option>
+    <option value="mysql">MySQL</option>
+    <option value="oracle">Oracle</option>
+    <option value="mssql">SQL Server</option>
+    <option value="sqlite">SQLite</option>
+  </select>
+
+  <label>Host</label>
+  <input id="host" placeholder="localhost or IP" value="">
+
+  <label>Port</label>
+  <input id="port" type="number" placeholder="e.g., 5432" value="">
+
+  <label>Database Name</label>
+  <input id="dbName" placeholder="e.g., my_database" value="">
+
+  <label>Username</label>
+  <input id="username" placeholder="e.g., admin" value="">
+
+  <label>Password</label>
+  <input id="password" type="password" placeholder="••••••" value="">
+</div>
+
+<!-- AWS MFA Section -->
+<div id="aws-section">
+  <label>AWS Profile</label>
+  <input id="aws_profile" placeholder="default">
+
+  <label>AWS Region</label>
+  <input id="aws_region" placeholder="e.g., us-east-1">
+
+  <label>MFA Device ARN</label>
+  <input id="aws_mfa_arn" placeholder="arn:aws:iam::ACCOUNT_ID:mfa/username">
+
+  <label>6-Digit MFA Code</label>
+  <input id="aws_mfa_code" placeholder="123456">
+
+  <p style="font-size: 13px; color: #555;">
+    ✅ Supports Google Authenticator, Microsoft Authenticator, Okta, etc.
+  </p>
+</div>
+
+<button onclick="generateConfig()">✅ Generate Config</button>
+
+<p id="message"></p>
+
+<script>
+  function toggleMethod() {
+    const method = document.getElementById("method").value;
+    document.getElementById("manual-section").style.display = method === "manual" ? "block" : "none";
+    document.getElementById("aws-section").style.display = method === "aws" ? "block" : "none";
+  }
+
+ 
+  function generateConfig() {
+    const method = document.getElementById("method").value;
+    const msg = document.getElementById("message");
+    const formData = new FormData();
+
+    formData.append("method", method);
+
+    if (method === "manual") {
+      const connName = document.getElementById("connName").value;
+      if (!connName) {
+        msg.style.color = "red";
+        msg.textContent = "❗ Please enter a connection name.";
+        return;
+      }
+
+      const idField = document.getElementById("id").value;
+      const id = idField || connName.replace(/\s+/g, "_").toLowerCase();
+
+      const config = {
+        id,
+        softwareTool: document.getElementById("softwareTool").value,
+        connName,
+        dbType: document.getElementById("dbType").value,
+        host: document.getElementById("host").value,
+        port: document.getElementById("port").value,
+        dbName: document.getElementById("dbName").value,
+        username: document.getElementById("username").value,
+        password: document.getElementById("password").value
+      };
+
+      for (const key in config) {
+        if (key === "id") continue;
+        formData.append(`connections[0][${key}]`, config[key]);
+      }
+
+    } else if (method === "aws") {
+      formData.append("aws_profile", document.getElementById("aws_profile").value);
+      formData.append("aws_region", document.getElementById("aws_region").value);
+      formData.append("aws_mfa_arn", document.getElementById("aws_mfa_arn").value);
+      formData.append("aws_mfa_token", document.getElementById("aws_mfa_code").value);
+    }
+
+    fetch("/submit", {
+      method: "POST",
+      body: formData
+    })
+    .then(res => res.json())
+    .then(data => {
+      if (data.status === "success") {
+        msg.style.color = "green";
+        msg.textContent = "✅ " + data.message;
+
+        // 👉 Auto-download ZIP from backend
+        const link = document.createElement("a");
+        link.href = "/download-exe";
+        link.download = "db_config_bundle.zip";
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+
+      } else {
+        msg.style.color = "red";
+        msg.textContent = "❌ Error: " + (data.message || "Unknown");
+      }
+    })
+    .catch(err => {
+      console.error(err);
+      msg.style.color = "red";
+      msg.textContent = "❌ Network error.";
+    });
+  }
+
+
+  
+  window.onload = toggleMethod;
+
+
+
+
+</script>
+</body>
+</html>

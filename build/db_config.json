@@ -1,0 +1,15 @@
+[
+  {
+    "id": "sdfa",
+    "software": "DataGrip",
+    "name": "sdfa",
+    "driver": "postgresql",
+    "configuration": {
+      "host": "sadf",
+      "port": 2112,
+      "database": "saf",
+      "user": "asdf",
+      "password": "bagwdwsad"
+    }
+  }
+]
